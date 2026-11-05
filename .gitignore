@@ -1,0 +1,9 @@
+# 비밀값 — 절대 커밋 금지
+.env
+.env.*
+!.env.example
+
+data/cache/
+data/*.log
+__pycache__/
+*.pyc

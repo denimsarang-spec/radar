@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>진입 레이더</title>
+<style>
+:root {
+  --bg: #f6f6f3; --card: #ffffff; --ink: #16181d; --muted: #6b7079; --line: #e3e3de;
+  --ok: #1f9d55; --warn: #e07b00; --no: #d33a2c; --na: #9aa0a6;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1114; --card: #181b20; --ink: #e8e9eb; --muted: #8b9099; --line: #2a2e35;
+    --ok: #34c472; --warn: #ff9a1f; --no: #ff5a4a; --na: #6c727a;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1114; --card: #181b20; --ink: #e8e9eb; --muted: #8b9099; --line: #2a2e35;
+  --ok: #34c472; --warn: #ff9a1f; --no: #ff5a4a; --na: #6c727a;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink);
+  font: 15px/1.5 -apple-system, "Segoe UI", "Malgun Gothic", "Apple SD Gothic Neo", sans-serif; }
+main { max-width: 760px; margin: 0 auto; padding: 20px 16px 48px; }
+header { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+h1 { font-size: 18px; margin: 0; letter-spacing: -0.01em; }
+h2 { font-size: 13px; color: var(--muted); font-weight: 600; margin: 28px 0 10px; letter-spacing: 0.04em; }
+.muted { color: var(--muted); }
+.num { font-variant-numeric: tabular-nums; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; }
+
+/* 링 */
+.hero { display: flex; align-items: center; gap: 20px; padding: 18px; margin-top: 14px; }
+.ring { position: relative; width: 132px; height: 132px; flex: none; --c: {{stage_color}}; }
+.ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+.ring .track { stroke: var(--line); }
+.ring .arc { stroke: var(--c); stroke-linecap: round; }
+.ring .sweep { position: absolute; inset: 6px; border-radius: 50%;
+  background: conic-gradient(from 0deg, transparent 0 80%, color-mix(in srgb, var(--c) 35%, transparent) 100%);
+  animation: sweep 4s linear infinite; }
+@keyframes sweep { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .ring .sweep { animation: none; } }
+.ring .center { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; }
+.ring .center b { font-size: 26px; line-height: 1; }
+.ring .center span { font-size: 12px; color: var(--muted); }
+.verdict { font-size: 17px; font-weight: 600; display: flex; gap: 8px; align-items: center; }
+.dot { width: 10px; height: 10px; border-radius: 50%; background: {{stage_color}}; flex: none; }
+.veto { display: none; margin-top: 8px; color: var(--no); font-size: 13px; font-weight: 600; }
+.veto.on { display: block; }
+
+/* 램프 */
+.lamps { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+@media (max-width: 520px) { .lamps { grid-template-columns: 1fr; } .hero { flex-direction: column; align-items: flex-start; } }
+.lamp { padding: 12px 14px; border-left: 4px solid var(--na); }
+.lamp[data-s="ok"] { border-left-color: var(--ok); }
+.lamp[data-s="warn"] { border-left-color: var(--warn); }
+.lamp[data-s="no"] { border-left-color: var(--no); }
+.lamp .top { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; }
+.lamp .name { font-weight: 600; }
+.lamp .st { font-size: 12px; font-weight: 700; }
+.lamp[data-s="ok"] .st { color: var(--ok); }
+.lamp[data-s="warn"] .st { color: var(--warn); }
+.lamp[data-s="no"] .st { color: var(--no); }
+.lamp[data-s="na"] .st { color: var(--na); }
+.lamp .val { margin-top: 4px; font-size: 14px; overflow-wrap: anywhere; }
+.lamp .vf { margin-top: 2px; font-size: 11px; color: var(--muted); }
+
+/* 테이프 */
+.tape { display: grid; grid-template-columns: repeat(4, 1fr); padding: 4px 0; }
+@media (max-width: 520px) { .tape { grid-template-columns: repeat(2, 1fr); } }
+.tape div { padding: 8px 14px; }
+.tape small { display: block; color: var(--muted); font-size: 11px; }
+
+ul.list { margin: 0; padding: 12px 14px 12px 30px; }
+ul.list li { margin: 2px 0; }
+.note { padding: 12px 14px; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { text-align: left; padding: 8px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { color: var(--muted); font-weight: 600; font-size: 12px; }
+tr:last-child td { border-bottom: 0; }
+.wrap { overflow-x: auto; }
+footer { margin-top: 28px; font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>진입 레이더</h1>
+    <span class="muted num">{{date}}</span>
+  </header>
+
+  <section class="card hero" data-stage="{{stage}}">
+    <div class="ring" aria-label="충족 {{ok_count}}/8">
+      <div class="sweep"></div>
+      <svg viewBox="0 0 120 120">
+        <circle class="track" cx="60" cy="60" r="52" fill="none" stroke-width="9"/>
+        <circle class="arc" cx="60" cy="60" r="52" fill="none" stroke-width="9" stroke-dasharray="{{ring_dash}}"/>
+      </svg>
+      <div class="center"><b class="num">{{ok_count}}/8</b><span>{{stage_label}}</span></div>
+    </div>
+    <div>
+      <div class="verdict"><span class="dot"></span><span>{{verdict}}</span></div>
+      <div class="veto {{veto}}">{{veto_text}}</div>
+      <p class="muted" style="margin:8px 0 0;font-size:13px">대기 → 1단계(01·02·03) → 2단계(01~05). 상태와 단계만 표시합니다.</p>
+    </div>
+  </section>
+
+  <h2>조건 8개</h2>
+  <section class="lamps">
+    <div class="card lamp" data-s="{{lamp01_s}}"><div class="top"><span class="name">01 급락일 외인 매도 급감</span><span class="st">{{lamp01_state}}</span></div><div class="val num">{{lamp01_val}}</div><div class="vf">{{lamp01_verify}}</div></div>
+    <div class="card lamp" data-s="{{lamp02_s}}"><div class="top"><span class="name">02 외인 선물 롱 유지</span><span class="st">{{lamp02_state}}</span></div><div class="val num">{{lamp02_val}}</div><div class="vf">{{lamp02_verify}}</div></div>
+    <div class="card lamp" data-s="{{lamp03_s}}"><div class="top"><span class="name">03 베이시스 정상화</span><span class="st">{{lamp03_state}}</span></div><div class="val num">{{lamp03_val}}</div><div class="vf">{{lamp03_verify}}</div></div>
+    <div class="card lamp" data-s="{{lamp04_s}}"><div class="top"><span class="name">04 SOX 20일선 복귀</span><span class="st">{{lamp04_state}}</span></div><div class="val num">{{lamp04_val}}</div><div class="vf">{{lamp04_verify}}</div></div>
+    <div class="card lamp" data-s="{{lamp05_s}}"><div class="top"><span class="name">05 D램 현물 유지</span><span class="st">{{lamp05_state}}</span></div><div class="val num">{{lamp05_val}}</div><div class="vf">{{lamp05_verify}}</div></div>
+    <div class="card lamp" data-s="{{lamp06_s}}"><div class="top"><span class="name">06 하이일드 스프레드</span><span class="st">{{lamp06_state}}</span></div><div class="val num">{{lamp06_val}}</div><div class="vf">{{lamp06_verify}}</div></div>
+    <div class="card lamp" data-s="{{lamp07_s}}"><div class="top"><span class="name">07 외인 시총 비중</span><span class="st">{{lamp07_state}}</span></div><div class="val num">{{lamp07_val}}</div><div class="vf">{{lamp07_verify}}</div></div>
+    <div class="card lamp" data-s="{{lamp08_s}}"><div class="top"><span class="name">08 이익 컨센서스</span><span class="st">{{lamp08_state}}</span></div><div class="val num">{{lamp08_val}}</div><div class="vf">{{lamp08_verify}}</div></div>
+  </section>
+
+  <h2>월가 해석</h2>
+  <section class="card note">{{wallst_note}}</section>
+
+  <h2>테이프</h2>
+  <section class="card tape num">
+    <div><small>다우</small>{{tape_dow}}</div>
+    <div><small>SOX</small>{{tape_sox}}</div>
+    <div><small>VIX</small>{{tape_vix}}</div>
+    <div><small>미 10년</small>{{tape_us10y}}</div>
+    <div><small>DXY</small>{{tape_dxy}}</div>
+    <div><small>WTI</small>{{tape_wti}}</div>
+    <div><small>코스피</small>{{tape_kospi}}</div>
+    <div><small>원달러</small>{{tape_usdkrw}}</div>
+  </section>
+
+  <h2>다음 일정</h2>
+  <section class="card"><ul class="list">{{next_rows}}</ul></section>
+
+  <h2>후보군 · 검토 목록</h2>
+  <section class="card wrap" id="cands">
+    <table>
+      <thead><tr><th>종목</th><th>연결 램프</th><th>최근 공시·메모</th></tr></thead>
+      <tbody>
+        <tr id="cand-1"><td>—</td><td>—</td><td class="muted">LLM 갱신 대기</td></tr>
+        <tr id="cand-2"><td>—</td><td>—</td><td class="muted">LLM 갱신 대기</td></tr>
+        <tr id="cand-3"><td>—</td><td>—</td><td class="muted">LLM 갱신 대기</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <h2>검증 로그</h2>
+  <section class="card wrap">
+    <table>
+      <thead><tr><th>항목</th><th>1차</th><th>2차</th></tr></thead>
+      <tbody>
+        <tr><td>코스피 지수</td><td>Npay 증권 KOSPI</td><td>yfinance ^KS11</td></tr>
+        <tr><td>외인 코스피 수급</td><td>Npay 증권 투자자별</td><td>KIS(설정 시) · data/manual.json</td></tr>
+        <tr><td>외인 선물</td><td>Npay 증권 선물 투자자별</td><td>KIS(설정 시) · data/manual.json</td></tr>
+        <tr><td>베이시스</td><td>Npay 증권 KPI200 · FUT 최근월물</td><td>data/manual.json</td></tr>
+        <tr><td>SOX</td><td>yfinance ^SOX</td><td>stooq</td></tr>
+        <tr><td>D램 현물</td><td>DRAMeXchange</td><td>memoryindex.io</td></tr>
+        <tr><td>외인 시총 비중</td><td>data/manual.json (주 1회)</td><td>—</td></tr>
+        <tr><td colspan="3" class="muted">두 소스 차이 1% 초과 → "소스 불일치" 표시, 1차 채택. 실패 항목은 "미수집".</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <footer class="num">생성 {{generated}} · 매수·매도 판단 아님</footer>
+</main>
+</body>
+</html>
