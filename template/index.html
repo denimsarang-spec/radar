@@ -80,6 +80,10 @@ th, td { text-align: left; padding: 8px 14px; border-bottom: 1px solid var(--lin
 th { color: var(--muted); font-weight: 600; font-size: 12px; }
 tr:last-child td { border-bottom: 0; }
 .wrap { overflow-x: auto; }
+.capt { margin: 0; padding: 8px 14px; font-size: 12px; }
+.prov { display: none; margin-top: 10px; padding: 8px 12px; font-size: 12px; color: var(--warn);
+  border: 1px solid var(--warn); border-radius: 8px; }
+.prov.on { display: block; }
 footer { margin-top: 28px; font-size: 12px; color: var(--muted); }
 </style>
 </head>
@@ -87,8 +91,9 @@ footer { margin-top: 28px; font-size: 12px; color: var(--muted); }
 <main>
   <header>
     <h1>진입 레이더</h1>
-    <span class="muted num">{{date}}</span>
+    <span class="muted num">기준 거래일 {{date}}</span>
   </header>
+  <div class="prov {{prov}}">장중 또는 마감 직후 잠정치입니다. 종가 확정 후 달라질 수 있습니다.</div>
 
   <section class="card hero" data-stage="{{stage}}">
     <div class="ring" aria-label="충족 {{ok_count}}/8">
@@ -139,31 +144,23 @@ footer { margin-top: 28px; font-size: 12px; color: var(--muted); }
   <h2>후보군 · 검토 목록</h2>
   <section class="card wrap" id="cands">
     <table>
-      <thead><tr><th>종목</th><th>연결 램프</th><th>최근 공시·메모</th></tr></thead>
-      <tbody>
-        <tr id="cand-1"><td>—</td><td>—</td><td class="muted">LLM 갱신 대기</td></tr>
-        <tr id="cand-2"><td>—</td><td>—</td><td class="muted">LLM 갱신 대기</td></tr>
-        <tr id="cand-3"><td>—</td><td>—</td><td class="muted">LLM 갱신 대기</td></tr>
-      </tbody>
+      <thead><tr><th>자리</th><th>종목</th><th>근거</th><th>확인 트리거</th></tr></thead>
+      <tbody>{{cand_rows}}</tbody>
     </table>
+    <p class="muted capt">{{cand_when}}</p>
   </section>
 
   <h2>검증 로그</h2>
   <section class="card wrap">
     <table>
-      <thead><tr><th>항목</th><th>1차</th><th>2차</th></tr></thead>
-      <tbody>
-        <tr><td>코스피 지수</td><td>Npay 증권 KOSPI</td><td>yfinance ^KS11</td></tr>
-        <tr><td>외인 코스피 수급</td><td>Npay 증권 투자자별</td><td>KIS(설정 시) · data/manual.json</td></tr>
-        <tr><td>외인 선물</td><td>Npay 증권 선물 투자자별</td><td>KIS(설정 시) · data/manual.json</td></tr>
-        <tr><td>베이시스</td><td>Npay 증권 KPI200 · FUT 최근월물</td><td>data/manual.json</td></tr>
-        <tr><td>SOX</td><td>yfinance ^SOX</td><td>stooq</td></tr>
-        <tr><td>D램 현물</td><td>DRAMeXchange</td><td>memoryindex.io</td></tr>
-        <tr><td>외인 시총 비중</td><td>data/manual.json (주 1회)</td><td>—</td></tr>
-        <tr><td colspan="3" class="muted">두 소스 차이 1% 초과 → "소스 불일치" 표시, 1차 채택. 실패 항목은 "미수집".</td></tr>
-      </tbody>
+      <thead><tr><th>항목</th><th>1차</th><th>2차</th><th>결과</th></tr></thead>
+      <tbody>{{verify_rows}}</tbody>
     </table>
+    <p class="muted capt">같은 기준일 값끼리 비교, 차이 1% 초과면 소스 불일치. 판정은 1차 값 사용.</p>
   </section>
+
+  <h2>수집 실패</h2>
+  <section class="card"><ul class="list">{{error_rows}}</ul></section>
 
   <footer class="num">생성 {{generated}} · 매수·매도 판단 아님</footer>
 </main>

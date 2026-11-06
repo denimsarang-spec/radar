@@ -2,20 +2,70 @@ name: radar
 
 on:
   schedule:
-    - cron: "0 8 * * 1-5"   # 평일 17:00 KST (UTC 월~금 08:00), 장 마감 후 종가 기준. Actions 지연 있을 수 있음
+    - cron: "30 10 * * 1-5"   # 평일 19:30 KST (UTC 월~금 10:30). 종가 확정 + D램 당일분(19:10) 이후. 지연돼도 장중 값이 섞이지 않음
   workflow_dispatch:
+  push:
+    branches: [main, "claude/**"]
+    paths:                     # 루틴의 LLM 결과나 코드가 바뀌면 페이지를 바로 다시 만든다 (봇 커밋은 트리거 안 됨)
+      - data/llm/latest.json
+      - data/manual.json
+      - radar.py
+      - sources/**
+      - template/**
+      - .github/workflows/radar.yml
 
 permissions:
   contents: write
   pages: write
   id-token: write
+  actions: write
 
 concurrency:
-  group: radar
+  group: radar-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
+  # 루틴은 claude/ 브랜치에만 푸시할 수 있다 → LLM 결과 파일 하나만 검사해 main에 반영
+  llm-merge:
+    if: startsWith(github.ref, 'refs/heads/claude/')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: LLM 결과 검사·반영
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin "$GITHUB_SHA"
+          git checkout "$GITHUB_SHA" -- data/llm/latest.json
+          PYTHONIOENCODING=utf-8 python -W ignore radar.py --check-llm data/llm/latest.json
+          git add data/llm/latest.json
+          if git diff --cached --quiet; then echo "변경 없음"; else
+            git commit -m "llm $(TZ=Asia/Seoul date +%F)"
+            git push origin main
+          fi
+
+      - name: 페이지 재생성 요청
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run radar.yml --ref main
+
+      - name: 브랜치 삭제
+        run: git push origin --delete "$GITHUB_REF_NAME"
+
   run:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:

@@ -16,17 +16,23 @@ import time
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+import requests
+
 import radar
 from sources import naver, us
 
 QUOTE_MIN, QUOTE_MAX = 5, 70
 LAMP_OPEN, LAMP_CLOSED = 30, 300
 SLOW_SEC = 600
-SLOW_KEYS = ("sox", "dx", "mi", "yf_kospi")  # 하루 1번 바뀌는 소스 → 램프 갱신마다 부르지 않는다
+SLOW_KEYS = ("sox", "nv_sox", "dx", "mi", "yf_kospi", "hy_live")  # 하루 1번 바뀌는 소스 → 램프 갱신마다 부르지 않는다
 PAGE_POLL_MS = 3000
 
 # 커밋 대상 data/kis_fut.json에 장중 값이 들어가지 않도록 분리
 LIVE_KIS = radar.DATA / "cache" / "kis_fut_live.json"
+# 루틴·Actions가 저장소에 올린 최신 파일을 pull 없이 받아 쓴다 (작업 폴더를 건드리지 않음)
+RAW = "https://raw.githubusercontent.com/denimsarang-spec/radar/main/data/"
+SHARED = {"LLM_PATH": ("llm/latest.json", radar.DATA / "cache" / "llm_latest.json"),
+          "HY_CACHE": ("hy_oas.json", radar.DATA / "cache" / "hy_oas_live.json")}
 
 log = radar.log
 
@@ -64,12 +70,26 @@ def quote_loop():
         time.sleep(State.quote_every)
 
 
+def fetch_shared():
+    for attr, (rel, path) in SHARED.items():
+        try:
+            r = requests.get(RAW + rel, timeout=15)
+            r.raise_for_status()
+            r.json()
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(r.text, encoding="utf-8")
+            setattr(radar, attr, path)
+        except Exception as ex:
+            log.warning("공유 파일 %s 실패: %s", rel, ex)
+
+
 def lamp_loop():
     slow, slow_at, tape = {}, 0, {}
     while True:
         try:
             if now() - slow_at > SLOW_SEC:
                 slow, slow_at = {}, now()
+                fetch_shared()
                 try:
                     fresh, _ = us.tape()
                     tape = {**tape, **{k: v for k, v in fresh.items() if v is not None}}
@@ -96,7 +116,12 @@ def banner():
         late.append("시세")
     if State.lamp_at and now() - State.lamp_at > (LAMP_OPEN if market_open() else LAMP_CLOSED) * 2 + 60:
         late.append("판정")
-    mode = "장중 · 램프는 현재값 기준 잠정치(종가 아님)" if market_open() else "장 닫힘 · 마지막 거래일 기준"
+    if market_open():
+        mode = "장중 · 램프는 현재값 기준 잠정치(종가 아님)"
+    elif State.sig and State.sig.get("provisional"):
+        mode = "마감 직후 · 16:30 전 잠정치"
+    else:
+        mode = "장 닫힘 · 마지막 거래일 기준"
     warn = f'<b> · {"·".join(late)} 갱신 지연</b>' if late else ""
     return (f'<div class="livebar{" late" if late else ""} num">{mode}<br>'
             f"시세 {clock(State.quote_at)} · 판정 {clock(State.lamp_at)}{warn}</div>")
@@ -179,7 +204,8 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
-    sys.stdout.reconfigure(encoding="utf-8")
+    if sys.stdout:  # 작업 스케줄러(pythonw)로 실행하면 콘솔이 없다
+        sys.stdout.reconfigure(encoding="utf-8")
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=8765)
     ap.add_argument("--no-open", action="store_true")
@@ -188,13 +214,20 @@ def main():
     if not LIVE_KIS.exists() and radar.KIS_FUT_CACHE.exists():
         LIVE_KIS.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy(radar.KIS_FUT_CACHE, LIVE_KIS)
-    radar.KIS_FUT_CACHE = LIVE_KIS
+    radar.KIS_FUT_CACHE, radar.KIS_SAVE_ALWAYS = LIVE_KIS, True
+    # FRED가 되는 회선이어도 커밋 대상 파일은 건드리지 않는다
+    if not SHARED["HY_CACHE"][1].exists() and radar.HY_CACHE.exists():
+        SHARED["HY_CACHE"][1].parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy(radar.HY_CACHE, SHARED["HY_CACHE"][1])
+    radar.HY_CACHE = SHARED["HY_CACHE"][1]
 
     srv = ThreadingHTTPServer(("127.0.0.1", a.port), Handler)  # 인증이 없으므로 이 PC에서만 접속
     threading.Thread(target=quote_loop, daemon=True).start()
     threading.Thread(target=lamp_loop, daemon=True).start()
     url = f"http://127.0.0.1:{a.port}"
-    print(f"실시간 레이더 {url} (종료: Ctrl+C)", flush=True)
+    log.info("실시간 레이더 시작 %s", url)
+    if sys.stdout:
+        print(f"실시간 레이더 {url} (종료: Ctrl+C)", flush=True)
     if not a.no_open:
         webbrowser.open(url)
     try:

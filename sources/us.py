@@ -1,9 +1,9 @@
-"""yfinance(1차) / stooq(2차) 수집: SOX 20일선, 코스피 지수 보조, 테이프."""
-import io
+"""yfinance 수집: SOX 20일선, 코스피 지수 보조, 테이프."""
+import logging
 
-import pandas as pd
-import requests
 import yfinance as yf
+
+log = logging.getLogger("radar")
 
 
 def yf_close(ticker, period="3mo"):
@@ -11,42 +11,27 @@ def yf_close(ticker, period="3mo"):
     try:
         h = yf.Ticker(ticker).history(period=period, auto_adjust=False)
         if h.empty:
+            log.warning("야후 %s: 빈 응답", ticker)
             return None
         s = h["Close"].dropna()
         s.index = [d.date() for d in s.index]
         return s
-    except Exception:
-        return None
-
-
-def stooq_close(symbol):
-    try:
-        r = requests.get(f"https://stooq.com/q/d/l/?s={symbol}&i=d", timeout=15)
-        df = pd.read_csv(io.StringIO(r.text))
-        if "Close" not in df.columns or df.empty:
-            return None
-        s = df.set_index(pd.to_datetime(df["Date"]).dt.date)["Close"].dropna()
-        return s.tail(90)
-    except Exception:
+    except Exception as ex:
+        log.warning("야후 %s 실패: %s: %s", ticker, type(ex).__name__, ex)
         return None
 
 
 def sox():
-    """SOX 종가·20MA. 반환 dict 또는 None."""
+    """SOX 종가·20MA (야후). 네이버 교차검증은 radar.lamp04."""
     s1 = yf_close("^SOX")
-    s2 = stooq_close("^sox")
     if s1 is None or len(s1) < 20:
-        return None
-    out = {
+        raise ValueError("야후 ^SOX 수집 실패")
+    return {
         "date": str(s1.index[-1]),
         "close": float(s1.iloc[-1]),
         "ma20": float(s1.tail(20).mean()),
         "chg": float(s1.iloc[-1] / s1.iloc[-2] - 1),
-        "close_2": None,
     }
-    if s2 is not None and s1.index[-1] in s2.index:
-        out["close_2"] = float(s2.loc[s1.index[-1]])
-    return out
 
 
 def kospi_yf():

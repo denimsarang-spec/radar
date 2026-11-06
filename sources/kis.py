@@ -22,6 +22,8 @@ TOKEN = ROOT / "data" / "cache" / "kis_token.json"
 TR_MARKET_DAILY = ("/uapi/domestic-stock/v1/quotations/inquire-investor-daily-by-market", "FHPTJ04040000")
 # 시장별 투자자매매동향(시세) — 코스피200 선물, 당일분 (일별 누적은 radar 캐시로)
 TR_MARKET_TIME = ("/uapi/domestic-stock/v1/quotations/inquire-investor-time-by-market", "FHPTJ04030000")
+TR_INDEX_DAILY = ("/uapi/domestic-stock/v1/quotations/inquire-index-daily-price", "FHPUP02120000")
+TR_FUT_PRICE = ("/uapi/domestic-futureoption/v1/quotations/inquire-price", "FHMIF10000000")
 
 
 def _env():
@@ -102,6 +104,20 @@ def fut_foreign_today():
     j = _get(TR_MARKET_TIME, {"FID_INPUT_ISCD": "K2I", "FID_INPUT_ISCD_2": "F001"})  # K2I=코스피200 선물
     r = (_rows(j) or [j.get("output") or {}])[0]
     return {"net": float(r["frgn_ntby_tr_pbmn"]) * 1e6, "qty": float(r.get("frgn_ntby_qty") or 0)}
+
+
+def k200_daily(end):
+    """코스피200 현물 일별 종가."""
+    j = _get(TR_INDEX_DAILY, {"FID_PERIOD_DIV_CODE": "D", "FID_COND_MRKT_DIV_CODE": "U",
+                              "FID_INPUT_ISCD": "2001", "FID_INPUT_DATE_1": end.strftime("%Y%m%d")})
+    out = {dt.datetime.strptime(r["stck_bsop_date"], "%Y%m%d").date(): float(r["bstp_nmix_prpr"])
+           for r in _rows(j) if r.get("stck_bsop_date") and r.get("bstp_nmix_prpr")}
+    return pd.Series(out).sort_index() if out else None
+
+
+def fut_price():
+    """코스피200 선물 최근월물 현재가 (장 마감 뒤엔 종가). 응답에 날짜 없음."""
+    return float(_get(TR_FUT_PRICE, {"FID_COND_MRKT_DIV_CODE": "F", "FID_INPUT_ISCD": "10100000"})["output1"]["futs_prpr"])
 
 
 if __name__ == "__main__":

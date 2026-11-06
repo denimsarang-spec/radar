@@ -3,6 +3,7 @@
 - {code}/price      일별 시세 (KOSPI, KPI200, FUT=코스피200 선물 최근월물)
 - {code}/trend      일별 투자자 순매수 (bizdate=YYYYMMDD, 단위 억원)
 - FUT/integration   선물 월물(month)
+- api.stock.naver.com/index/.SOX/price   해외 지수 일별 시세
 구조가 바뀌면 예외를 그대로 올린다 → radar.py가 na + 로그 처리.
 """
 import datetime as dt
@@ -15,17 +16,23 @@ import pandas as pd
 import requests
 
 BASE = "https://m.stock.naver.com/api/index/"
+UA = {"User-Agent": "Mozilla/5.0"}
+WORLD = "https://api.stock.naver.com/index/"
 POLL = "https://polling.finance.naver.com/api/realtime/"
 FX = "https://m.stock.naver.com/front-api/marketIndex/productDetail?category=exchange&reutersCode=FX_USDKRW"
 CACHE = Path(__file__).resolve().parent.parent / "data" / "cache" / "naver_trend.json"
 
 
 def _get(path, **params):
-    r = requests.get(BASE + path, params=params, timeout=15)
-    r.raise_for_status()
-    if "json" not in (r.headers.get("content-type") or ""):
-        raise ValueError(f"{path}: JSON 아님 (구조 변경?)")
-    return r.json()
+    """간헐적으로 HTML을 돌려줄 때가 있어 1회 재시도."""
+    for attempt in (1, 2):
+        r = requests.get(BASE + path, params=params, timeout=15, headers=UA)
+        r.raise_for_status()
+        if "json" in (r.headers.get("content-type") or ""):
+            return r.json()
+        if attempt == 1:
+            time.sleep(1)
+    raise ValueError(f"{path}: JSON 아님 (구조 변경?)")
 
 
 def _num(s):
@@ -45,6 +52,13 @@ def daily_close(code, n=80):
         raise ValueError(f"{code}/price: 빈 응답")
     s = pd.Series({dt.date.fromisoformat(r["localTradedAt"][:10]): _num(r["closePrice"]) for r in rows})
     return s.sort_index()
+
+
+def world_close(code, n=10):
+    """해외 지수 일별 종가 Series (현지 날짜). 예: .SOX"""
+    r = requests.get(f"{WORLD}{code}/price", params={"page": 1, "pageSize": n}, timeout=15, headers=UA)
+    r.raise_for_status()
+    return pd.Series({dt.date.fromisoformat(x["localTradedAt"][:10]): _num(x["closePrice"]) for x in r.json()}).sort_index()
 
 
 def futures_month():
@@ -86,14 +100,14 @@ def trend_series(code, dates, today):
 
 def _realtime(path):
     """polling.finance.naver.com 실시간 시세. (시세 dict, 서버 권장 폴링 간격 초) 반환."""
-    r = requests.get(POLL + path, timeout=5, headers={"User-Agent": "Mozilla/5.0"})
+    r = requests.get(POLL + path, timeout=5, headers=UA)
     r.raise_for_status()
     j = r.json()
     return j["datas"][0], j.get("pollingInterval", 70000) / 1000
 
 
 def _usdkrw():
-    r = requests.get(FX, timeout=5, headers={"User-Agent": "Mozilla/5.0"})
+    r = requests.get(FX, timeout=5, headers=UA)
     r.raise_for_status()
     return r.json()["result"]["closePrice"]
 
