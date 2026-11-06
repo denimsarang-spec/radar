@@ -315,13 +315,14 @@ def apply_llm(sig):
     return sig
 
 
-def build(day):
-    c = Ctx(day)
+def build(day, c=None, tape=None):
+    c = c or Ctx(day)
     lamps = {k: safe(fn, c) for k, fn in LAMPS.items()}
-    try:
-        tape, _ = us.tape()
-    except Exception:
-        tape = {}
+    if tape is None:
+        try:
+            tape, _ = us.tape()
+        except Exception:
+            tape = {}
     old = DATA / f"{day}.json"
     llm = {"wallst_note": "", "candidates_updates": [], "verdict": ""}
     if old.exists():  # 재실행해도 LLM이 채운 블록은 보존

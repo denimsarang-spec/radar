@@ -8,12 +8,15 @@
 import datetime as dt
 import json
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pandas as pd
 import requests
 
 BASE = "https://m.stock.naver.com/api/index/"
+POLL = "https://polling.finance.naver.com/api/realtime/"
+FX = "https://m.stock.naver.com/front-api/marketIndex/productDetail?category=exchange&reutersCode=FX_USDKRW"
 CACHE = Path(__file__).resolve().parent.parent / "data" / "cache" / "naver_trend.json"
 
 
@@ -79,3 +82,45 @@ def trend_series(code, dates, today):
     CACHE.parent.mkdir(parents=True, exist_ok=True)
     CACHE.write_text(json.dumps(cache, ensure_ascii=False), encoding="utf-8")
     return pd.Series(out, dtype=float).sort_index() if out else None
+
+
+def _realtime(path):
+    """polling.finance.naver.com 실시간 시세. (시세 dict, 서버 권장 폴링 간격 초) 반환."""
+    r = requests.get(POLL + path, timeout=5, headers={"User-Agent": "Mozilla/5.0"})
+    r.raise_for_status()
+    j = r.json()
+    return j["datas"][0], j.get("pollingInterval", 70000) / 1000
+
+
+def _usdkrw():
+    r = requests.get(FX, timeout=5, headers={"User-Agent": "Mozilla/5.0"})
+    r.raise_for_status()
+    return r.json()["result"]["closePrice"]
+
+
+def live_tape():
+    """테이프용 실시간 값 + 코스피 장 상태. 항목별 실패는 빠진 채로 반환 (직전 값 유지는 호출자 몫)."""
+    def pct(d):
+        return f"{_num(d['fluctuationsRatio']):+.2f}%"
+
+    paths = {"kospi": "domestic/index/KOSPI", "dow": "worldstock/index/.DJI", "sox": "worldstock/index/.SOX"}
+    with ThreadPoolExecutor(len(paths) + 1) as ex:
+        futs = {k: ex.submit(_realtime, p) for k, p in paths.items()}
+        fx = ex.submit(_usdkrw)
+    tape, wait, status = {}, [], None
+    for k, f in futs.items():
+        try:
+            d, sec = f.result()
+        except Exception:
+            continue
+        wait.append(sec)
+        if k == "kospi":
+            tape[k] = f"{d['closePrice']} {pct(d)}"
+            status = d.get("marketStatus")
+        else:
+            tape[k] = pct(d)
+    try:
+        tape["usdkrw"] = fx.result()
+    except Exception:
+        pass
+    return tape, status, min(wait) if wait else None
