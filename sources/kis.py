@@ -10,6 +10,7 @@
 import datetime as dt
 import json
 import os
+import time
 from pathlib import Path
 
 import pandas as pd
@@ -70,9 +71,13 @@ def _token():
 def _get(tr, params):
     path, tr_id = tr
     e = _env()
-    r = requests.get(_base() + path, params=params, timeout=15, headers={
-        "authorization": f"Bearer {_token()}", "appkey": e["KIS_APP_KEY"], "appsecret": e["KIS_APP_SECRET"],
-        "tr_id": tr_id, "custtype": "P", "content-type": "application/json; charset=utf-8"})
+    for attempt in (1, 2):  # 간헐적 5xx 1회 재시도
+        r = requests.get(_base() + path, params=params, timeout=15, headers={
+            "authorization": f"Bearer {_token()}", "appkey": e["KIS_APP_KEY"], "appsecret": e["KIS_APP_SECRET"],
+            "tr_id": tr_id, "custtype": "P", "content-type": "application/json; charset=utf-8"})
+        if r.status_code < 500:
+            break
+        time.sleep(1)
     r.raise_for_status()
     j = r.json()
     if j.get("rt_cd") != "0":
