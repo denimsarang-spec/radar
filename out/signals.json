@@ -72,7 +72,7 @@
     "theory": null,
     "month": "26.12."
    },
-   "verify": "1src",
+   "verify": "2src",
    "checks": [
     {
      "item": "코스피200 현물 11/6",
@@ -84,9 +84,9 @@
     {
      "item": "코스피200 선물 11/6",
      "a": "네이버 782.95",
-     "b": "수동 값 없음",
-     "r": "1src",
-     "gap": null
+     "b": "KIS 782.95",
+     "r": "2src",
+     "gap": 0.0
     }
    ]
   },
@@ -243,7 +243,7 @@
  ],
  "llm": {
   "date": "2026-11-06",
-  "generated_at": "2026-11-06T08:40:00+09:00",
+  "generated_at": "2026-11-06T08:41:00+09:00",
   "wallst_note": "11/5 미국장: 나스닥 -5.52%, S&P -4.36%, SOX -12.25%. 민주당 의회 장악에 따른 AI 데이터센터 규제·건설 지연 우려와 마이크론 대만 공장 공사 중단 보도가 겹쳤다. (11/6 루틴 아티팩트에서 옮긴 내용)",
   "lamps": {
    "06": {
@@ -348,7 +348,6 @@
   "fresh": true
  },
  "errors": [
-  "kis_fut_px: HTTPError: 500 Server Error: Internal Server Error for url: https://openapi.koreainvestment.com:9443/uapi/domestic-futureoption/v1/",
-  "hy_live: ReadTimeout: HTTPSConnectionPool(host='fred.stlouisfed.org', port=443): Read timed out. (read timeout=15)"
+  "hy_live: ReadTimeout: HTTPSConnectionPool(host='fred.stlouisfed.org', port=443): Read timed out. (read timeout=20)"
  ]
 }
