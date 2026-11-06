@@ -80,6 +80,10 @@ th, td { text-align: left; padding: 8px 14px; border-bottom: 1px solid var(--lin
 th { color: var(--muted); font-weight: 600; font-size: 12px; }
 tr:last-child td { border-bottom: 0; }
 .wrap { overflow-x: auto; }
+.capt { margin: 0; padding: 8px 14px; font-size: 12px; }
+.prov { display: none; margin-top: 10px; padding: 8px 12px; font-size: 12px; color: var(--warn);
+  border: 1px solid var(--warn); border-radius: 8px; }
+.prov.on { display: block; }
 footer { margin-top: 28px; font-size: 12px; color: var(--muted); }
 </style>
 </head>
@@ -87,8 +91,9 @@ footer { margin-top: 28px; font-size: 12px; color: var(--muted); }
 <main>
   <header>
     <h1>진입 레이더</h1>
-    <span class="muted num">2026-11-06</span>
+    <span class="muted num">기준 거래일 2026-11-06</span>
   </header>
+  <div class="prov ">장중 또는 마감 직후 잠정치입니다. 종가 확정 후 달라질 수 있습니다.</div>
 
   <section class="card hero" data-stage="wait">
     <div class="ring" aria-label="충족 2/8">
@@ -111,61 +116,53 @@ footer { margin-top: 28px; font-size: 12px; color: var(--muted); }
     <div class="card lamp" data-s="no"><div class="top"><span class="name">01 급락일 외인 매도 급감</span><span class="st">미충족</span></div><div class="val num">11/6 -2.69조 · 20일평균 1.9배</div><div class="vf">2소스 일치</div></div>
     <div class="card lamp" data-s="ok"><div class="top"><span class="name">02 외인 선물 롱 유지</span><span class="st">충족</span></div><div class="val num">5일 누적 +2.52조 · 당일 +1.42조</div><div class="vf">2소스 일치</div></div>
     <div class="card lamp" data-s="warn"><div class="top"><span class="name">03 베이시스 정상화</span><span class="st">주의</span></div><div class="val num">시장 -0.28pt</div><div class="vf">1소스</div></div>
-    <div class="card lamp" data-s="no"><div class="top"><span class="name">04 SOX 20일선 복귀</span><span class="st">미충족</span></div><div class="val num">9,011.14 · 20MA 11,185.18</div><div class="vf">1소스</div></div>
-    <div class="card lamp" data-s="ok"><div class="top"><span class="name">05 D램 현물 유지</span><span class="st">충족</span></div><div class="val num">DDR5 16Gb $60.67 · 30일 +9.9%</div><div class="vf">소스 불일치</div></div>
-    <div class="card lamp" data-s="na"><div class="top"><span class="name">06 하이일드 스프레드</span><span class="st">미수집</span></div><div class="val num">미수집</div><div class="vf">—</div></div>
+    <div class="card lamp" data-s="no"><div class="top"><span class="name">04 SOX 20일선 복귀</span><span class="st">미충족</span></div><div class="val num">9,390.25 (11/6) · 20MA 11,026.07</div><div class="vf">2소스 일치</div></div>
+    <div class="card lamp" data-s="ok"><div class="top"><span class="name">05 D램 현물 유지</span><span class="st">충족</span></div><div class="val num">DDR5 16Gb $60.17 (11/6) · 30일 +8.1%</div><div class="vf">소스 불일치</div></div>
+    <div class="card lamp" data-s="no"><div class="top"><span class="name">06 하이일드 스프레드</span><span class="st">미충족</span></div><div class="val num">OAS 3.32% (11/4) · 1주 +18bp</div><div class="vf">1소스</div></div>
     <div class="card lamp" data-s="no"><div class="top"><span class="name">07 외인 시총 비중</span><span class="st">미충족</span></div><div class="val num">37.38% (11/5 기준) · 바닥 32~33%</div><div class="vf">1소스</div></div>
-    <div class="card lamp" data-s="warn"><div class="top"><span class="name">08 이익 컨센서스</span><span class="st">주의</span></div><div class="val num">LLM 미채움</div><div class="vf">—</div></div>
+    <div class="card lamp" data-s="warn"><div class="top"><span class="name">08 이익 컨센서스</span><span class="st">주의</span></div><div class="val num">capex 가이던스 미발표 · 하향 확인 없음</div><div class="vf">1소스</div></div>
   </section>
 
   <h2>월가 해석</h2>
-  <section class="card note">LLM 미채움</section>
+  <section class="card note">11/5 미국장: 나스닥 -5.52%, S&amp;P -4.36%, SOX -12.25%. 민주당 의회 장악에 따른 AI 데이터센터 규제·건설 지연 우려와 마이크론 대만 공장 공사 중단 보도가 겹쳤다. (11/6 루틴 아티팩트에서 옮긴 내용) (2026-11-06 기준)</section>
 
   <h2>테이프</h2>
   <section class="card tape num">
-    <div><small>다우</small>-3.44%</div>
-    <div><small>SOX</small>-12.25%</div>
-    <div><small>VIX</small>+70%</div>
-    <div><small>미 10년</small>4.837%</div>
-    <div><small>DXY</small>101.66</div>
-    <div><small>WTI</small>$91.66 +4.0%</div>
+    <div><small>다우</small>-0.46%</div>
+    <div><small>SOX</small>+4.21%</div>
+    <div><small>VIX</small>-9%</div>
+    <div><small>미 10년</small>4.859%</div>
+    <div><small>DXY</small>102.28</div>
+    <div><small>WTI</small>$90.34 -0.2%</div>
     <div><small>코스피</small>5,059.69 -6.02%</div>
-    <div><small>원달러</small>1,357.18</div>
+    <div><small>원달러</small>1,363.65</div>
   </section>
 
   <h2>다음 일정</h2>
-  <section class="card"><ul class="list"><li class="muted">등록된 일정 없음</li></ul></section>
+  <section class="card"><ul class="list"><li><b>11/12 목</b> 옵션 만기 + 샘씨엔에스 실적 → 03 / 후보군</li><li><b>11/14</b> 티엘비 3Q 실적 → 후보군</li><li><b>11월 중</b> 엔비디아 실적·빅테크 capex → 08</li><li><b>11월 말</b> 한은 금통위 → 06·07</li><li><b>12/10 목</b> 동시만기 → 02·03</li></ul></section>
 
   <h2>후보군 · 검토 목록</h2>
   <section class="card wrap" id="cands">
     <table>
-      <thead><tr><th>종목</th><th>연결 램프</th><th>최근 공시·메모</th></tr></thead>
-      <tbody>
-        <tr id="cand-1"><td>—</td><td>—</td><td class="muted">LLM 갱신 대기</td></tr>
-        <tr id="cand-2"><td>—</td><td>—</td><td class="muted">LLM 갱신 대기</td></tr>
-        <tr id="cand-3"><td>—</td><td>—</td><td class="muted">LLM 갱신 대기</td></tr>
-      </tbody>
+      <thead><tr><th>자리</th><th>종목</th><th>근거</th><th>확인 트리거</th></tr></thead>
+      <tbody><tr><td>1차</td><td>테크윙</td><td>큐브프로버 삼성 공급 중, 3월 하닉 퀄 통과 → 6/17 첫 수주, 마이크론 결과 연내. 11/3 천안 생산동 신축 526억 투자 공시(자기자본 26.7%, ~27.7월), 고객 미기재</td><td>마이크론 퀄 공시 → 3사 완성</td></tr><tr><td>1차</td><td>샘씨엔에스</td><td>Technoprobe HBM4용 STF 3Q부터, HBM4E 전환 시 5배. 풀가동·증설 임박</td><td>11/12 3Q 실적, 증설 공시</td></tr><tr><td>1차</td><td>디아이 / 유니테스트</td><td>HBM4 웨이퍼 테스터 하닉 계약. 디아이 11/3 -12.3%(원인 보도 없음)</td><td>추가 수주 공시</td></tr><tr><td>1차</td><td>한화비전</td><td>한화세미텍 SHB2 나노 하이브리드 본더 고객 테스트 중, 하닉 TC본더 누적 805억</td><td>테스트 결과·추가 수주</td></tr><tr><td>2차</td><td>티엘비</td><td>SOCAMM2(Vera Rubin) 수주잔고 1,318억, 2027 가이던스 1,500억. 4Q 삼성 CXL 3.1 PCB</td><td>11/14 3Q 실적, CXL 양산 확인</td></tr><tr><td>2차</td><td>엑시콘</td><td>CLT 삼성 베트남 40대 잠재, 올해 302+120+498억 수주. Gen6 SSD·CXL 테스터</td><td>다음 수주 공시</td></tr><tr><td>2차</td><td>네오셈</td><td>CXL 검사장비 대장, 엑시콘과 동행. PER 130대라 2차에서만</td><td>CXL 3.1 양산 뉴스</td></tr><tr><td>공정</td><td>피에스케이홀딩스 / 이오테크닉스</td><td>HBM 리플로우·식각 / 레이저. 6월 장비주 랠리 선두</td><td>분기 수주잔고</td></tr><tr><td>제외</td><td>심텍 / 리노공업</td><td>10월에 +42% / +28% 선반영</td><td>눌림 깊이 재확인 후</td></tr><tr><td>제외</td><td>한미반도체</td><td>TC본더 1위지만 대형·외인 보유, 소형주 패턴 아님</td><td>—</td></tr></tbody>
     </table>
+    <p class="muted capt">LLM 2026-11-06 기준 · 종목 추천 아님</p>
   </section>
 
   <h2>검증 로그</h2>
   <section class="card wrap">
     <table>
-      <thead><tr><th>항목</th><th>1차</th><th>2차</th></tr></thead>
-      <tbody>
-        <tr><td>코스피 지수</td><td>Npay 증권 KOSPI</td><td>yfinance ^KS11</td></tr>
-        <tr><td>외인 코스피 수급</td><td>Npay 증권 투자자별</td><td>KIS(설정 시) · data/manual.json</td></tr>
-        <tr><td>외인 선물</td><td>Npay 증권 선물 투자자별</td><td>KIS(설정 시) · data/manual.json</td></tr>
-        <tr><td>베이시스</td><td>Npay 증권 KPI200 · FUT 최근월물</td><td>data/manual.json</td></tr>
-        <tr><td>SOX</td><td>yfinance ^SOX</td><td>stooq</td></tr>
-        <tr><td>D램 현물</td><td>DRAMeXchange</td><td>memoryindex.io</td></tr>
-        <tr><td>외인 시총 비중</td><td>data/manual.json (주 1회)</td><td>—</td></tr>
-        <tr><td colspan="3" class="muted">두 소스 차이 1% 초과 → "소스 불일치" 표시, 1차 채택. 실패 항목은 "미수집".</td></tr>
-      </tbody>
+      <thead><tr><th>항목</th><th>1차</th><th>2차</th><th>결과</th></tr></thead>
+      <tbody><tr><td>01 코스피 11/6</td><td>네이버 5,059.69</td><td>야후 값 없음</td><td>1소스</td></tr><tr><td>01 외인 현물 11/6</td><td>네이버 -2.69조</td><td>KIS -2.69조</td><td>2소스 일치</td></tr><tr><td>02 외인 선물 11/6</td><td>네이버 +1.42조</td><td>KIS +1.42조</td><td>2소스 일치</td></tr><tr><td>03 코스피200 현물 11/6</td><td>네이버 783.23</td><td>KIS 783.23</td><td>2소스 일치</td></tr><tr><td>03 코스피200 선물 11/6</td><td>네이버 782.95</td><td>수동 값 없음</td><td>1소스</td></tr><tr><td>04 SOX 11/6</td><td>야후 9,390.25</td><td>네이버 9,390.25</td><td>2소스 일치</td></tr><tr><td>05 DDR5 16Gb (11/6)</td><td>DRAMeXchange $60.17</td><td>memoryindex $62.17</td><td>소스 불일치 (차 3.3%)</td></tr><tr><td>06 2026-11-04 LLM</td><td>FRED 1출처, 추출값</td><td>—</td><td>1소스</td></tr><tr><td>07 외인 시총 비중 11/5</td><td>수동 입력 37.38%</td><td>—</td><td>1소스</td></tr><tr><td>08 2026-11-06 LLM</td><td>마이크론 공사 중단은 tradingkey(블룸버그 인용) 1건</td><td>—</td><td>1소스</td></tr></tbody>
     </table>
+    <p class="muted capt">같은 기준일 값끼리 비교, 차이 1% 초과면 소스 불일치. 판정은 1차 값 사용.</p>
   </section>
 
-  <footer class="num">생성 2026-11-07 08:25 · 매수·매도 판단 아님</footer>
+  <h2>수집 실패</h2>
+  <section class="card"><ul class="list"><li>kis_fut_px: HTTPError: 500 Server Error: Internal Server Error for url: https://openapi.koreainvestment.com:9443/uapi/domestic-futureoption/v1/</li><li>hy_live: ReadTimeout: HTTPSConnectionPool(host=&#x27;fred.stlouisfed.org&#x27;, port=443): Read timed out. (read timeout=15)</li></ul></section>
+
+  <footer class="num">생성 2026-11-07 08:56 · 매수·매도 판단 아님</footer>
 </main>
 </body>
 </html>
