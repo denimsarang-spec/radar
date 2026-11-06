@@ -1,6 +1,6 @@
 """실시간 레이더: 내 PC에서 수집해 바로 보여주는 로컬 서버. GitHub Actions·Pages를 거치지 않는다.
 
-python live.py               # http://127.0.0.1:8000 열기
+python live.py               # http://127.0.0.1:8765 열기
 python live.py --port 8080 --no-open
 
 갱신 주기 — 시세: 네이버 권장 간격(최소 5초) / 램프: 장중 30초, 장외 5분 / 미국·D램: 10분
@@ -181,7 +181,7 @@ class Handler(BaseHTTPRequestHandler):
 def main():
     sys.stdout.reconfigure(encoding="utf-8")
     ap = argparse.ArgumentParser()
-    ap.add_argument("--port", type=int, default=8000)
+    ap.add_argument("--port", type=int, default=8765)
     ap.add_argument("--no-open", action="store_true")
     a = ap.parse_args()
 
