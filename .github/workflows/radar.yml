@@ -53,7 +53,12 @@ jobs:
           git add data/llm/latest.json
           if git diff --cached --quiet; then echo "변경 없음"; else
             git commit -m "llm $(TZ=Asia/Seoul date +%F)"
-            git push origin main
+            for i in 1 2 3 4 5; do
+              git pull --rebase origin main && git push origin main && break
+              git rebase --abort 2>/dev/null || true
+              [ "$i" = 5 ] && exit 1
+              sleep $((i * 5))
+            done
           fi
 
       - name: 페이지 재생성 요청
@@ -97,8 +102,13 @@ jobs:
           git add out/ data/*.json
           if git diff --cached --quiet; then echo "변경 없음"; exit 0; fi
           git commit -m "radar $(date +%F)"
-          git pull --rebase
-          git push
+          # 루틴·사용자 푸시와 겹칠 수 있다. out/ 충돌은 방금 만든 쪽을 택한다
+          for i in 1 2 3 4 5; do
+            git pull --rebase -X theirs && git push && exit 0
+            git rebase --abort 2>/dev/null || true
+            sleep $((i * 5))
+          done
+          exit 1
 
       - uses: actions/upload-pages-artifact@v3
         with:
