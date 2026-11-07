@@ -1,76 +1,28 @@
 name: radar
 
+# 공개 페이지는 내렸다. 이 파일을 푸시하면 안내 페이지로 덮어쓴다.
+# 저녁 수집은 PC 작업(RadarLive)이 자리 잡을 때까지만 유지하며 페이지에는 배포하지 않는다.
 on:
   schedule:
-    - cron: "30 10 * * 1-5"   # 평일 19:30 KST (UTC 월~금 10:30). 종가 확정 + D램 당일분(19:10) 이후. 지연돼도 장중 값이 섞이지 않음
+    - cron: "30 10 * * 1-5"   # 평일 19:30 KST (UTC 월~금 10:30)
   workflow_dispatch:
   push:
-    branches: [main, "claude/**"]
-    paths:                     # 루틴의 LLM 결과나 코드가 바뀌면 페이지를 바로 다시 만든다 (봇 커밋은 트리거 안 됨)
-      - data/llm/latest.json
-      - data/manual.json
-      - radar.py
-      - sources/**
-      - template/**
+    branches: [main]
+    paths:
       - .github/workflows/radar.yml
 
 permissions:
   contents: write
   pages: write
   id-token: write
-  actions: write
 
 concurrency:
   group: radar-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  # 루틴은 claude/ 브랜치에만 푸시할 수 있다 → LLM 결과 파일 하나만 검사해 main에 반영
-  llm-merge:
-    if: startsWith(github.ref, 'refs/heads/claude/')
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: main
-          fetch-depth: 0
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: pip
-
-      - run: pip install -r requirements.txt
-
-      - name: LLM 결과 검사·반영
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git fetch origin "$GITHUB_SHA"
-          git checkout "$GITHUB_SHA" -- data/llm/latest.json
-          PYTHONIOENCODING=utf-8 python -W ignore radar.py --check-llm data/llm/latest.json
-          git add data/llm/latest.json
-          if git diff --cached --quiet; then echo "변경 없음"; else
-            git commit -m "llm $(TZ=Asia/Seoul date +%F)"
-            for i in 1 2 3 4 5; do
-              git pull --rebase origin main && git push origin main && break
-              git rebase --abort 2>/dev/null || true
-              [ "$i" = 5 ] && exit 1
-              sleep $((i * 5))
-            done
-          fi
-
-      - name: 페이지 재생성 요청
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh workflow run radar.yml --ref main
-
-      - name: 브랜치 삭제
-        run: git push origin --delete "$GITHUB_REF_NAME"
-
   run:
-    if: github.ref == 'refs/heads/main'
+    if: github.event_name != 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -102,7 +54,7 @@ jobs:
           git add out/ data/*.json
           if git diff --cached --quiet; then echo "변경 없음"; exit 0; fi
           git commit -m "radar $(date +%F)"
-          # 루틴·사용자 푸시와 겹칠 수 있다. out/ 충돌은 방금 만든 쪽을 택한다
+          # 푸시와 겹칠 수 있다. out/ 충돌은 방금 만든 쪽을 택한다
           for i in 1 2 3 4 5; do
             git pull --rebase -X theirs && git push && exit 0
             git rebase --abort 2>/dev/null || true
@@ -110,12 +62,21 @@ jobs:
           done
           exit 1
 
+  takedown:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: 안내 페이지 생성
+        run: |
+          mkdir site
+          printf '%s' '<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="robots" content="noindex"><title>Closed</title></head><body><p>This page is no longer published.</p></body></html>' > site/index.html
+
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: out
+          path: site
 
   deploy:
-    needs: run
+    needs: takedown
     runs-on: ubuntu-latest
     environment:
       name: github-pages
