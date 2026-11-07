@@ -1,10 +1,10 @@
-"""실시간 레이더: 내 PC에서 수집해 바로 보여주는 로컬 서버. GitHub Actions·Pages를 거치지 않는다.
+"""실시간 레이더: 내 PC에서 수집해 보여주고 그날 기록을 남기는 로컬 서버. GitHub를 거치지 않는다.
 
 python live.py               # http://127.0.0.1:8765 열기
 python live.py --port 8080 --no-open
 
 갱신 주기 — 시세: 네이버 권장 간격(최소 5초) / 램프: 장중 30초, 장외 5분 / 미국·D램: 10분
-장중 램프는 종가 기준 스펙을 현재값으로 돌린 잠정치라 data/YYYY-MM-DD.json(백테스트용)에 저장하지 않는다.
+장중 램프는 종가 기준 스펙을 현재값으로 돌린 잠정치라 저장하지 않고, 19:30 이후 확정값만 data/YYYY-MM-DD.json에 저장한다.
 """
 import argparse
 import datetime as dt
@@ -15,8 +15,6 @@ import threading
 import time
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-
-import requests
 
 import radar
 from sources import naver, us
@@ -29,10 +27,7 @@ PAGE_POLL_MS = 3000
 
 # 커밋 대상 data/kis_fut.json에 장중 값이 들어가지 않도록 분리
 LIVE_KIS = radar.DATA / "cache" / "kis_fut_live.json"
-# 루틴·Actions가 저장소에 올린 최신 파일을 pull 없이 받아 쓴다 (작업 폴더를 건드리지 않음)
-RAW = "https://raw.githubusercontent.com/denimsarang-spec/radar/main/data/"
-SHARED = {"LLM_PATH": ("llm/latest.json", radar.DATA / "cache" / "llm_latest.json"),
-          "HY_CACHE": ("hy_oas.json", radar.DATA / "cache" / "hy_oas_live.json")}
+SAVE_AT = dt.time(19, 30)  # 종가 확정 + D램 당일분(19:10) 이후 그날 기록 저장
 
 log = radar.log
 
@@ -44,6 +39,7 @@ class State:
     quote_at = None
     quote_every = QUOTE_MAX
     lamp_at = None
+    saved = None
 
 
 def now():
@@ -70,17 +66,19 @@ def quote_loop():
         time.sleep(State.quote_every)
 
 
-def fetch_shared():
-    for attr, (rel, path) in SHARED.items():
-        try:
-            r = requests.get(RAW + rel, timeout=15)
-            r.raise_for_status()
-            r.json()
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(r.text, encoding="utf-8")
-            setattr(radar, attr, path)
-        except Exception as ex:
-            log.warning("공유 파일 %s 실패: %s", rel, ex)
+def save_record(sig):
+    """확정값을 data/<거래일>.json에 저장. 당일은 19:30 이후 1회, 지난 거래일은 기록이 없을 때만."""
+    if sig.get("provisional") or State.saved == sig["date"]:
+        return
+    path = radar.DATA / f"{sig['date']}.json"
+    now_ = dt.datetime.now()
+    if sig["date"] == str(now_.date()) and now_.time() < SAVE_AT:
+        return
+    if sig["date"] != str(now_.date()) and path.exists():
+        return
+    path.write_text(json.dumps(sig, ensure_ascii=False, indent=1, default=str), encoding="utf-8")
+    State.saved = sig["date"]
+    log.info("기록 저장 %s", path.name)
 
 
 def lamp_loop():
@@ -89,7 +87,6 @@ def lamp_loop():
         try:
             if now() - slow_at > SLOW_SEC:
                 slow, slow_at = {}, now()
-                fetch_shared()
                 try:
                     fresh, _ = us.tape()
                     tape = {**tape, **{k: v for k, v in fresh.items() if v is not None}}
@@ -100,6 +97,7 @@ def lamp_loop():
             State.sig = radar.build(c.day, c, tape)
             slow = {k: c._c[k] for k in SLOW_KEYS if k in c._c}
             State.lamp_at = now()
+            save_record(State.sig)
         except Exception:
             log.exception("램프 갱신 실패")
         time.sleep(LAMP_OPEN if market_open() else LAMP_CLOSED)
@@ -215,11 +213,6 @@ def main():
         LIVE_KIS.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy(radar.KIS_FUT_CACHE, LIVE_KIS)
     radar.KIS_FUT_CACHE, radar.KIS_SAVE_ALWAYS = LIVE_KIS, True
-    # FRED가 되는 회선이어도 커밋 대상 파일은 건드리지 않는다
-    if not SHARED["HY_CACHE"][1].exists() and radar.HY_CACHE.exists():
-        SHARED["HY_CACHE"][1].parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy(radar.HY_CACHE, SHARED["HY_CACHE"][1])
-    radar.HY_CACHE = SHARED["HY_CACHE"][1]
 
     srv = ThreadingHTTPServer(("127.0.0.1", a.port), Handler)  # 인증이 없으므로 이 PC에서만 접속
     threading.Thread(target=quote_loop, daemon=True).start()
