@@ -1,10 +1,8 @@
 name: radar
 
 # 공개 페이지는 내렸다. 이 파일을 푸시하면 안내 페이지로 덮어쓴다.
-# 저녁 수집은 PC 작업(RadarLive)이 자리 잡을 때까지만 유지하며 페이지에는 배포하지 않는다.
+# 수집은 PC 작업(RadarLive, RadarLLM)으로 옮겼다. 여기서는 수동 실행만 남긴다.
 on:
-  schedule:
-    - cron: "30 10 * * 1-5"   # 평일 19:30 KST (UTC 월~금 10:30)
   workflow_dispatch:
   push:
     branches: [main]
