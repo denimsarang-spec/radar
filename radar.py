@@ -42,17 +42,24 @@ CRASH = -0.02          # 01 급락일 기준
 CRASH_LOOKBACK = 60    # 직전 급락일 탐색 범위(거래일)
 STALE_DAYS = 5         # 01 판정 유지 기간(거래일)
 FINAL_AT = dt.time(16, 30)  # 이 시각 전 당일 값은 잠정 (네이버 closePriceSendTime)
+FUT_FLAT_QTY = 500     # 02 당일 외인 선물 보합 범위(계약)
+FUT_MULT = 250_000     # 코스피200 선물 거래승수(원/pt)
 HY_MAX_AGE = 10        # 06 하이일드 허용 나이(일)
 LLM_MAX_AGE = 5        # LLM 결과 허용 나이(일), 지나면 06·07·08에 쓰지 않음
 
 
 # ---------- 공통 ----------
-def verify(a, b):
+TOL = 0.01             # 소스 불일치 기준(상대 차이)
+TOL_LIVE = 0.15        # 장중 잠정값: 소스마다 갱신 시각이 달라 어긋난다(11/10 외인 선물 1.4~8.4%, 확정치는 일치)
+TOL_DRAM = 0.05        # 05: DRAMeXchange·memoryindex는 집계 기준이 달라 평소 1.6~3.5% 차이
+
+
+def verify(a, b, tol=TOL):
     if a is None and b is None:
         return None
     if a is None or b is None:
         return "1src"
-    return "mismatch" if abs(a - b) > abs(a) * 0.01 else "2src"
+    return "mismatch" if abs(a - b) > abs(a) * tol else "2src"
 
 
 def na(val="미수집", raw=None):
@@ -72,11 +79,11 @@ def is_provisional(asof):
     return asof == now.date() and now.time() < FINAL_AT
 
 
-def check(item, a_name, a, b_name=None, b=None, fmt=str):
+def check(item, a_name, a, b_name=None, b=None, fmt=str, tol=TOL):
     """검증 로그 한 줄. 같은 기준일의 두 값을 실제로 비교한 결과만 남긴다."""
     show = lambda n, x: n if n is None else (f"{n} {fmt(x)}" if x is not None else f"{n} 값 없음")  # noqa: E731
     gap = abs(a - b) / abs(a) if a and b is not None else None
-    return {"item": item, "a": show(a_name, a), "b": show(b_name, b), "r": verify(a, b), "gap": gap}
+    return {"item": item, "a": show(a_name, a), "b": show(b_name, b), "r": verify(a, b, tol), "gap": gap}
 
 
 def worst(checks):
@@ -138,7 +145,8 @@ class Ctx:
         """체인의 앞 두 소스를 기준일 d 값으로 비교."""
         c = self.chains.get(key) or []
         return check(item, c[0][0] if c else "소스", _on(c[0][1], d) if c else None,
-                     c[1][0] if len(c) > 1 else "2차", _on(c[1][1], d) if len(c) > 1 else None, jo)
+                     c[1][0] if len(c) > 1 else "2차", _on(c[1][1], d) if len(c) > 1 else None, jo,
+                     TOL_LIVE if is_provisional(d) else TOL)
 
     def frgn(self, dates):
         """코스피 외인 순매수(원)."""
@@ -190,7 +198,7 @@ def lamp01(c):
 
     days = c.trading_days()
     i0 = days.index(d0)
-    f = c.frgn(days[max(0, i0 - 20):i0 + 1])
+    f = c.frgn(days[max(0, i0 - 20):])  # 급락일 이후분은 경로 B용
     prior = f[[d < d0 for d in f.index]].tail(20) if f is not None else []
     if f is None or d0 not in f.index or len(prior) < 20:
         n = 0 if f is None else len(prior)
@@ -200,11 +208,17 @@ def lamp01(c):
     avg20 = float(prior.abs().mean())
     sell = max(0.0, -net)
     ratio = sell / avg20 if avg20 else 0.0
-    raw.update({"frgn": net, "avg20_abs": avg20, "ratio": ratio})
+    # 경로 B: 급락일 이후 최근 2거래일 연속 외인 현물 순매수면 급락일 판정과 무관하게 ok (최근 수급이라 경과일도 무관)
+    after = [d for d in f.index if d > d0][-2:]
+    path_b = len(after) == 2 and all(f[d] > 0 for d in after)
+    raw.update({"frgn": net, "avg20_abs": avg20, "ratio": ratio,
+                "after2": {str(d): float(f[d]) for d in after}, "path_b": path_b})
     s = "ok" if sell < avg20 else "no"
     if since > STALE_DAYS:
         s = "warn"
-    tail = f" · {since}일 경과" if since else ""
+    if path_b:
+        s = "ok"
+    tail = (f" · {since}일 경과" if since else "") + (" · 경로B 외인 2일 연속 순매수" if path_b else "")
     ck_k = check(f"코스피 {md(d0)}", "네이버", _on(nv, d0), "야후", _on(yf, d0), pt)
     ck_f = c.cross("frgn", f"외인 현물 {md(d0)}", d0)
     return {"s": s, "val": f"{md(d0)} {jo(net)} · 20일평균 {ratio:.1f}배{tail}", "raw": raw,
@@ -223,10 +237,14 @@ def lamp02(c):
     if len(w) < 5:
         return na(f"외인 선물 이력 부족 ({len(w)}/5일)")
     cum5, today = float(w.sum()), float(w.iloc[-1])
-    s = "no" if cum5 <= 0 else ("ok" if today >= 0 else "warn")
+    # 당일 순매수가 ±500계약 미만이면 보합. 수급은 금액(원)이라 그날 선물 종가로 계약 수를 금액으로 환산한다
+    px = _on(c.get("nv_fut", lambda: naver.daily_close("FUT", 10)), d)
+    flat = FUT_FLAT_QTY * px * FUT_MULT if px else 0.0
+    s = "no" if cum5 <= 0 else ("ok" if today >= -flat else "warn")
     ck = c.cross("fut", f"외인 선물 {md(d)}", d)
-    return {"s": s, "val": f"5일 누적 {jo(cum5)} · 당일 {jo(today)}",
-            "raw": {"date": str(d), "cum5": cum5, "today": today,
+    tail = f" (보합 ±{jo(flat)[1:]} 이내)" if flat and -flat <= today < 0 else ""
+    return {"s": s, "val": f"5일 누적 {jo(cum5)} · 당일 {jo(today)}{tail}",
+            "raw": {"date": str(d), "cum5": cum5, "today": today, "fut_px": px, "flat_won": flat,
                     "window": {str(k): float(v) for k, v in w.items()}, "oi": None},
             "verify": ck["r"], "checks": [ck]}
 
@@ -310,14 +328,24 @@ def lamp05(c):
         return na(f"DDR5 16Gb ${price:.2f} · 30일 변화 미수집", raw)
     asof = dx.get("asof")
     when = f" ({md(dt.datetime.fromisoformat(asof))})" if asof else ""
-    ck = check(f"DDR5 16Gb{when}", "DRAMeXchange", p1, "memoryindex", p2, lambda v: f"${v:.2f}")
+    ck = check(f"DDR5 16Gb{when}", "DRAMeXchange", p1, "memoryindex", p2, lambda v: f"${v:.2f}", TOL_DRAM)
     return {"s": "ok" if chg > 0 else "no", "val": f"DDR5 16Gb ${price:.2f}{when} · 30일 {chg * 100:+.1f}%",
             "raw": raw, "verify": ck["r"], "checks": [ck]}
 
 
+_HY_TRIED = set()  # live.py처럼 오래 도는 프로세스에서 FRED를 날짜당 1회만 부르기 위한 기록
+
+
 def hy_series(c):
-    """FRED 최신값. 실패하면(국내 PC에서 막힘) 커밋된 이력 사용."""
-    s = c.get("hy_live", fred.hy_oas)
+    """FRED 최신값. 실패하면 마지막으로 받은 이력 사용.
+
+    하루 한 번 바뀌는 값이고 국내 회선에선 타임아웃이 잦다 → 확정 실행에서 날짜당 1회만 호출, 잠정 실행은 이력만.
+    """
+    today = dt.date.today()
+    s = None
+    if not is_provisional(c.last_trading_day()) and today not in _HY_TRIED:
+        _HY_TRIED.add(today)
+        s = c.get("hy_live", fred.hy_oas)
     if s is not None:
         HY_CACHE.parent.mkdir(parents=True, exist_ok=True)
         HY_CACHE.write_text(json.dumps({str(k): float(v) for k, v in s.tail(60).items()}), encoding="utf-8")
@@ -437,8 +465,35 @@ def apply_llm(sig):
                            "raw": {"src": v.get("src"), "asof": v.get("asof"), "by": "llm"},
                            "checks": [{"item": f"{v.get('asof', '')} LLM".strip(), "a": v.get("src") or "출처 미기재",
                                        "b": None, "r": v.get("verify", "llm"), "gap": None}]}
+    # 08은 무효 경고의 절반인데 LLM만 채운다 → LLM이 없거나 오래되면 경고가 켜질 수 없다는 걸 드러낸다
+    l08 = sig["lamps"]["08"]
+    if not llm.get("fresh"):
+        since = f"LLM {md(dt.date.fromisoformat(llm['date']))} 이후 갱신 없음" if llm.get("date") else "LLM 결과 없음"
+        sig["lamps"]["08"] = {**l08, "s": "warn", "val": f"{since} · 무효 경고 판단 불가", "verify": None}
+    elif (l08.get("raw") or {}).get("by") == "llm":
+        l08["val"] = f"{l08['val']} · {md(dt.date.fromisoformat(llm['date']))} 조사"
     sig["stage"], sig["veto"], sig["ok_count"] = judge(sig["lamps"])
     return sig
+
+
+def last_final(before):
+    """before 이전 마지막 확정 기록의 단계·충족 램프 (장중 잠정 판정과 나란히 보여주기용)."""
+    for p in sorted(DATA.glob("????-??-??.json"), reverse=True):
+        if p.stem >= str(before):
+            continue
+        try:
+            s = json.loads(p.read_text(encoding="utf-8"))
+            return {"date": s["date"], "stage": s["stage"], "veto": s.get("veto"),
+                    "ok": [k for k, l in s["lamps"].items() if l["s"] == "ok"]}
+        except Exception:
+            continue
+    return None
+
+
+def llm_missed_today(llm, now=None):
+    """평일 10시(08:00 시작 + 재시도 여유)가 지났는데 오늘 LLM 결과가 없으면 True."""
+    now = now or dt.datetime.now()
+    return now.weekday() < 5 and now.time() >= dt.time(10, 0) and llm.get("date") != str(now.date())
 
 
 def build(day, c=None, tape=None):
@@ -461,9 +516,13 @@ def build(day, c=None, tape=None):
                if n in c._c and c._c[n] is None and not any(e.startswith(f"{n}:") for e in errors)]
     if llm_err:
         errors.append(llm_err)
+    if not llm_err and llm_missed_today(llm):
+        errors.append(f"LLM 오늘 갱신 안 됨 (마지막 {llm.get('date') or '없음'}) · radar.log 확인")
     sig = {"date": str(asof), "provisional": is_provisional(asof), "stage": None, "veto": None, "ok_count": None,
            "lamps": lamps, "tape": tape, "next": (llm.get("next") if fresh else None) or c.m.get("next", []),
            "llm": {**llm, "fresh": fresh}, "errors": errors}
+    if sig["provisional"]:
+        sig["confirmed"] = last_final(asof)
     return apply_llm(sig)
 
 
@@ -486,6 +545,21 @@ def verify_rows(sig, e):
     return "".join(rows) or '<tr><td colspan="4" class="muted">기록 없음</td></tr>'
 
 
+def prov_text(sig):
+    """잠정 판정은 장중에 수시로 뒤집힌다 → 마지막 확정 판정과 나란히 보여준다."""
+    if not sig.get("provisional"):
+        return ""
+    ok = lambda ks: "·".join(ks) or "없음"  # noqa: E731
+    now = [k for k, l in sig["lamps"].items() if l["s"] == "ok"]
+    text = (f"장중 또는 마감 직후 잠정치입니다. 종가 확정 후 달라질 수 있습니다. "
+            f"지금(잠정) {STAGE[sig['stage']][0]} · 충족 {ok(now)}")
+    c = sig.get("confirmed")
+    if c:
+        text += (f" / 마지막 확정 {md(dt.date.fromisoformat(c['date']))} {STAGE[c['stage']][0]} · 충족 {ok(c['ok'])}"
+                 f"{' · 무효 경고' if c.get('veto') else ''}")
+    return text
+
+
 def render(sig):
     e = lambda x: html.escape(str(x if x is not None else "—"))  # noqa: E731
     label, color = STAGE[sig["stage"]]
@@ -502,6 +576,7 @@ def render(sig):
         "verdict": f"{label} · 충족 {sig['ok_count']}/8",
         "generated": dt.datetime.now().strftime("%Y-%m-%d %H:%M"),
         "prov": "on" if sig.get("provisional") else "",
+        "prov_text": prov_text(sig),
     }
     for k, l in sig["lamps"].items():
         v[f"lamp{k}_s"] = l["s"]
@@ -544,21 +619,33 @@ def write_html(sig):
     (OUT / "signals.json").write_text(json.dumps(sig, ensure_ascii=False, indent=1, default=str), encoding="utf-8")
 
 
-def push():
-    if not (OUT / ".git").exists():
-        print("out/.git 없음 — push 생략")
-        return
-    for cmd in (["add", "-A"], ["commit", "-m", f"radar {dt.date.today()}"], ["push"]):
-        subprocess.run(["git", "-C", str(OUT), *cmd], check=False)
+def push(day):
+    """루트 저장소에 data/·out/ 커밋 후 푸시 (클라우드 아침 작업이 out/signals.json을 읽는다). 실패는 로그만."""
+    git = lambda *a: subprocess.run(["git", "-C", str(ROOT), *a], capture_output=True,  # noqa: E731
+                                    encoding="utf-8", errors="replace")
+    for args in (["pull", "--rebase", "--autostash"], ["add", "data", "out"]):
+        r = git(*args)
+        if r.returncode:
+            log.error("push 중단 (git %s): %s", args[0], (r.stderr or r.stdout)[-300:])
+            return
+    if git("diff", "--cached", "--quiet").returncode:
+        git("commit", "-m", f"radar {day}")
+    r = git("push")
+    if r.returncode:
+        log.error("git push 실패: %s", (r.stderr or r.stdout)[-300:])
+    else:
+        log.info("푸시 완료 radar %s", day)
 
 
 def main():
-    sys.stdout.reconfigure(encoding="utf-8")
+    if sys.stdout:  # 작업 스케줄러(pythonw)로 실행하면 콘솔이 없다
+        sys.stdout.reconfigure(encoding="utf-8")
     ap = argparse.ArgumentParser()
     ap.add_argument("--date", type=dt.date.fromisoformat, default=dt.date.today())
     ap.add_argument("--lamp")
     ap.add_argument("--render", action="store_true")
-    ap.add_argument("--push", action="store_true")
+    ap.add_argument("--push", action="store_true", help="잠정 실행도 푸시 (확정 실행은 항상 푸시)")
+    ap.add_argument("--no-push", action="store_true", help="확정 실행이어도 푸시하지 않는다 (시험용)")
     ap.add_argument("--force", action="store_true", help="이미 있는 과거 기록도 다시 쓴다")
     ap.add_argument("--check-llm", metavar="PATH")
     a = ap.parse_args()
@@ -597,8 +684,8 @@ def main():
         print(f"  {k} {l['s']:4} {l['val']}  [{l.get('verify')}]")
     for x in sig.get("errors") or []:
         print(f"  실패: {x}")
-    if a.push:
-        push()
+    if not a.no_push and (a.push or not sig.get("provisional")):
+        push(sig["date"])
 
 
 if __name__ == "__main__":

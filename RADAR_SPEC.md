@@ -1,17 +1,23 @@
 # 진입 레이더 — 로컬 스펙 (RADAR_SPEC.md)
 
-## 현재 시스템 (2026-11 기준, 아래 초기 스펙보다 우선)
+## 현재 시스템 (2026-11-10 기준, 아래 초기 스펙보다 우선)
+PC 로컬 운영. GitHub Actions 예약 수집과 공개 페이지는 내렸다(`radar.yml`은 수동 실행만).
+폰에서는 Tailscale로 본다: https://desktop-2kq4rr1.tail74b4e7.ts.net:8765/ (`tailscale serve`, tailnet 전용)
+
 | 구성 | 시각(KST) | 하는 일 | 결과 |
 |---|---|---|---|
-| Actions `radar.yml` | 평일 19:30 (+ LLM·코드 변경 푸시 시) | 01~07 수집·판정 | `data/<거래일>.json`, `out/`, GitHub Pages |
-| 루틴 `진입 레이더 일일 갱신` | 평일 08:35 | 06·07·08 보조, 월가 해석, 후보군, 일정 | 아티팩트, `claude/llm-*` 브랜치의 `data/llm/latest.json` |
-| Actions `llm-merge` | 루틴 푸시 직후 | latest.json 형식 검사 후 main 반영, 페이지 재생성 | main |
-| `live.py` | PC 로그온부터 | 시세 5~70초, 램프 30초~5분 | http://127.0.0.1:8765 (기록 안 남김) |
+| 작업 `RadarLive` → `live.py` | PC 로그온부터 | 시세 5~70초, 램프 30초~5분, 19:30 이후 그날 기록 저장 | http://127.0.0.1:8765, `data/<거래일>.json` |
+| 작업 `RadarLLM` → `scripts/llm_daily.py` | 평일 08:00 (실패 시 5분 간격 3회) | 06·07·08 보조, 월가 해석, 후보군, 일정 | `data/llm/latest.json` |
+
+작업 등록: `scripts/setup_local.ps1`. 등록 직후에는 `Start-ScheduledTask RadarLive`로 한 번 시작.
 
 규칙
 - `date`는 기준 거래일. 당일 16:30 전 값은 `provisional`이며 `data/`·`kis_fut.json`에 저장하지 않는다.
+  잠정 화면에는 마지막 확정 판정을 함께 표시한다(`sig.confirmed`).
 - 지난 거래일 기록은 덮어쓰지 않는다. 고칠 때만 `--force`.
-- 06은 FRED(국내 회선은 `data/hy_oas.json`), 비면 LLM. 07은 수동 입력, LLM asof가 더 새로우면 LLM. 08은 LLM.
+- 06은 FRED(국내 회선은 웹이 막혀 `.env`의 `FRED_API_KEY`로 API 사용, 없으면 `data/hy_oas.json`), 비면 LLM. 07은 수동 입력, LLM asof가 더 새로우면 LLM. 08은 LLM.
+- 08이 LLM에만 의존하므로 LLM이 5일 넘게 없으면 08에 "무효 경고 판단 불가"를 표시한다. 평일 10시까지 오늘 LLM이 없으면 `errors`에 남긴다.
+- 소스 불일치 기준은 1%. 장중 잠정값은 15%, 05(D램 두 사이트 집계 기준 차이)는 5%.
 - LLM 결과는 5일 지나면 판정에 쓰지 않는다. 형식은 `radar.validate_llm`.
 - 소스 실패는 `sig.errors`와 화면 "수집 실패"에 남긴다. 조용히 삼키지 않는다.
 

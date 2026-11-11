@@ -93,7 +93,7 @@ footer { margin-top: 28px; font-size: 12px; color: var(--muted); }
     <h1>진입 레이더</h1>
     <span class="muted num">기준 거래일 {{date}}</span>
   </header>
-  <div class="prov {{prov}}">장중 또는 마감 직후 잠정치입니다. 종가 확정 후 달라질 수 있습니다.</div>
+  <div class="prov {{prov}}">{{prov_text}}</div>
 
   <section class="card hero" data-stage="{{stage}}">
     <div class="ring" aria-label="충족 {{ok_count}}/8">

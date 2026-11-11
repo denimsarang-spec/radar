@@ -10,6 +10,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -23,6 +24,7 @@ PROMPT = ROOT / "scripts" / "llm_prompt.md"
 LAST = radar.DATA / "cache" / "llm_last_output.txt"  # 실패 원인 확인용
 LIVE = "http://127.0.0.1:8765/state.json"
 TIMEOUT = 1500
+ATTEMPTS, RETRY_WAIT = 3, 300  # claude 실행 자체가 실패할 때만 재시도 (결과 형식 오류는 재시도하지 않음)
 log = radar.log
 
 
@@ -50,14 +52,22 @@ def main():
     prompt = (PROMPT.read_text(encoding="utf-8").replace("{{today}}", str(dt.date.today()))
               .replace("{{signals}}", json.dumps(brief, ensure_ascii=False, default=str)).replace("{{previous}}", prev))
     env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
-    r = subprocess.run([claude_path(), "-p", "--model", "claude-opus-5-5", "--allowedTools",
-                        "WebSearch,WebFetch,Agent,ToolSearch"],
-                       input=prompt, encoding="utf-8", errors="replace", capture_output=True, cwd=ROOT,
-                       env=env, timeout=TIMEOUT)
-    LAST.parent.mkdir(parents=True, exist_ok=True)
-    LAST.write_text(f"{r.stdout}\n--- stderr\n{r.stderr}", encoding="utf-8")
-    if r.returncode != 0:
-        raise RuntimeError(f"claude 종료 코드 {r.returncode}: {(r.stderr or r.stdout)[-300:]}")
+    for attempt in range(1, ATTEMPTS + 1):
+        r = subprocess.run([claude_path(), "-p", "--model", "claude-opus-5-5", "--allowedTools",
+                            "WebSearch,WebFetch,Agent,ToolSearch"],
+                           input=prompt, encoding="utf-8", errors="replace", capture_output=True, cwd=ROOT,
+                           env=env, timeout=TIMEOUT,
+                           creationflags=subprocess.CREATE_NO_WINDOW)  # pythonw에는 콘솔이 없어 창이 새로 뜨고, 닫히면 claude가 129로 죽는다
+        LAST.parent.mkdir(parents=True, exist_ok=True)
+        LAST.write_text(f"{r.stdout}\n--- stderr\n{r.stderr}", encoding="utf-8")
+        if r.returncode == 0:
+            break
+        msg = f"claude 종료 코드 {r.returncode}: {(r.stderr or r.stdout)[-300:]}"
+        if attempt == ATTEMPTS:
+            raise RuntimeError(msg)
+        # 2026-11-09 08:00 인증 갱신 실패처럼 일시적인 경우가 있어 잠시 뒤 다시 시도
+        log.warning("LLM 갱신 %d차 실패, %d초 뒤 재시도: %s", attempt, RETRY_WAIT, msg.strip())
+        time.sleep(RETRY_WAIT)
     blocks = re.findall(r"```json\s*(.*?)```", r.stdout or "", flags=re.S)
     if not blocks:
         raise ValueError(f"JSON 블록 없음: {(r.stdout or '')[-300:]}")
