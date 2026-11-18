@@ -52,6 +52,7 @@ LLM_MAX_AGE = 5        # LLM 결과 허용 나이(일), 지나면 06·07·08에 
 TOL = 0.01             # 소스 불일치 기준(상대 차이)
 TOL_LIVE = 0.15        # 장중 잠정값: 소스마다 갱신 시각이 달라 어긋난다(11/10 외인 선물 1.4~8.4%, 확정치는 일치)
 TOL_DRAM = 0.05        # 05: DRAMeXchange·memoryindex는 집계 기준이 달라 평소 1.6~3.5% 차이
+BASIS_TOL_PT = 0.5     # 03: 현물·선물 두 출처 허용 차이(pt). 램프 경계(-1.0pt)의 절반
 
 
 def verify(a, b, tol=TOL):
@@ -238,7 +239,7 @@ def lamp02(c):
         return na(f"외인 선물 이력 부족 ({len(w)}/5일)")
     cum5, today = float(w.sum()), float(w.iloc[-1])
     # 당일 순매수가 ±500계약 미만이면 보합. 수급은 금액(원)이라 그날 선물 종가로 계약 수를 금액으로 환산한다
-    px = _on(c.get("nv_fut", lambda: naver.daily_close("FUT", 10)), d)
+    px = _nv_px(c, "FUT", d)
     flat = FUT_FLAT_QTY * px * FUT_MULT if px else 0.0
     s = "no" if cum5 <= 0 else ("ok" if today >= -flat else "warn")
     ck = c.cross("fut", f"외인 선물 {md(d)}", d)
@@ -253,11 +254,20 @@ def _on(s, d):
     return float(s[d]) if s is not None and d in s.index else None
 
 
+def _nv_px(c, code, d):
+    """네이버 코스피200 현물(KPI200)·선물(FUT) 값. 당일은 실시간 값을 쓴다 (일봉의 당일 값은 장중에 늦게 따라옴)."""
+    if d == dt.date.today():
+        v = c.get(f"nv_{code}_now", lambda: naver.index_now(code))
+        if v is not None:
+            return v
+    return _on(c.get(f"nv_{code}", lambda: naver.daily_close(code, 10)), d)
+
+
 def lamp03(c):
     d = c.last_trading_day()
     k = (c.m.get("k200") or {}).get(str(d)) or {}
-    spot_n = _on(c.get("nv_k200", lambda: naver.daily_close("KPI200", 10)), d)
-    fut_n = _on(c.get("nv_fut", lambda: naver.daily_close("FUT", 10)), d)
+    spot_n = _nv_px(c, "KPI200", d)
+    fut_n = _nv_px(c, "FUT", d)
     spot_k = fut_k = None
     if kis.configured():
         ks = c.get("kis_k200", lambda: kis.k200_daily(c.day))
@@ -277,8 +287,10 @@ def lamp03(c):
     tail = f" · 이론 {theory:+.2f}" if theory is not None else ""
     month = c.get("nv_month", naver.futures_month)
     pt = lambda x: f"{x:,.2f}"  # noqa: E731
-    checks = [check(f"코스피200 현물 {md(d)}", "네이버", spot_n, spot_2[1], spot_2[0], pt),
-              check(f"코스피200 선물 {md(d)}", "네이버", fut_n, fut_2[1], fut_2[0], pt)]
+    # 베이시스는 가격의 1% 안팎이라 상대 1% 기준으로는 판정이 뒤집히는 차이도 통과한다 → 포인트 기준
+    ptol = lambda x: BASIS_TOL_PT / abs(x) if x else TOL  # noqa: E731
+    checks = [check(f"코스피200 현물 {md(d)}", "네이버", spot_n, spot_2[1], spot_2[0], pt, ptol(spot_n)),
+              check(f"코스피200 선물 {md(d)}", "네이버", fut_n, fut_2[1], fut_2[0], pt, ptol(fut_n))]
     return {"s": s, "val": f"시장 {basis:+.2f}pt{tail}",
             "raw": {"date": str(d), "spot": spot, "fut": fut, "basis": basis, "theory": theory, "month": month},
             "verify": worst(checks), "checks": checks}
@@ -471,7 +483,9 @@ def apply_llm(sig):
         since = f"LLM {md(dt.date.fromisoformat(llm['date']))} 이후 갱신 없음" if llm.get("date") else "LLM 결과 없음"
         sig["lamps"]["08"] = {**l08, "s": "warn", "val": f"{since} · 무효 경고 판단 불가", "verify": None}
     elif (l08.get("raw") or {}).get("by") == "llm":
-        l08["val"] = f"{l08['val']} · {md(dt.date.fromisoformat(llm['date']))} 조사"
+        # LLM이 문구에 "· M/D 조사"를 이미 붙여 오기도 해서 떼고 하나만 붙인다
+        val = re.sub(r"(\s*·\s*\d{1,2}/\d{1,2} 조사)+$", "", l08["val"])
+        l08["val"] = f"{val} · {md(dt.date.fromisoformat(llm['date']))} 조사"
     sig["stage"], sig["veto"], sig["ok_count"] = judge(sig["lamps"])
     return sig
 

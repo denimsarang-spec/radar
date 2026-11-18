@@ -106,6 +106,12 @@ def _realtime(path):
     return j["datas"][0], j.get("pollingInterval", 70000) / 1000
 
 
+def index_now(code):
+    """국내 지수·선물(KPI200, FUT) 실시간가 (장 마감 뒤엔 종가).
+    일봉(daily_close)의 당일 값은 장중에 늦게 따라온다(11/18 선물 789.8 vs 실제 797.4, 현물도 약 1pt)."""
+    return _num(_realtime(f"domestic/index/{code}")[0]["closePrice"])
+
+
 def _usdkrw():
     r = requests.get(FX, timeout=5, headers=UA)
     r.raise_for_status()
